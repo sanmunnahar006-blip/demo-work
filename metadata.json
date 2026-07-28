@@ -1,0 +1,6 @@
+{
+  "name": "SOLVEX Client Management System",
+  "description": "Enterprise Client, Project, Payment, and Communication Management Platform for SOLVEX website development agency.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

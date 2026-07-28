@@ -1,0 +1,26 @@
+{
+  "settings": {
+    "agencyName": "SOLVEX",
+    "tagline": "Enterprise Web Engineering & Digital Architecture",
+    "logoUrl": "",
+    "address": "700 Tech Plaza, Suite 1200, Silicon Valley, CA 94025",
+    "taxId": "US-998822110",
+    "email": "contact@solvex.io",
+    "phone": "+1 (800) 555-7658",
+    "website": "https://solvex.io",
+    "currency": "USD",
+    "dateFormat": "YYYY-MM-DD",
+    "timeZone": "America/Los_Angeles",
+    "masterPasswordHash": "459aad120d6b99b86c9aed8507978ee2aaa93f7ef60ffc4e9eb01fb01f91310e",
+    "autoLockMinutes": 30,
+    "securityLogsEnabled": true
+  },
+  "clients": [],
+  "projects": [],
+  "payments": [],
+  "communications": [],
+  "tasks": [],
+  "files": [],
+  "notifications": [],
+  "auditLogs": []
+}
