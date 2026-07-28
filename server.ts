@@ -29,7 +29,10 @@ import {
 } from './src/types';
 
 const PORT = 3000;
-const DB_PATH = path.join(process.cwd(), 'data', 'solvex_db.json');
+const isVercel = !!(process.env.VERCEL || process.env.NOW_BUILDER || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const DB_PATH = isVercel 
+  ? path.join('/tmp', 'solvex_db.json') 
+  : path.join(process.cwd(), 'data', 'solvex_db.json');
 
 // Interface for DB Structure
 interface DatabaseStore {
@@ -51,33 +54,37 @@ function hashPassword(pwd: string): string {
 
 // Ensure Data Directory & DB File Exist
 function initDatabase(): DatabaseStore {
-  const dir = path.dirname(DB_PATH);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-
-  if (!fs.existsSync(DB_PATH)) {
-    const initialData: DatabaseStore = {
-      settings: INITIAL_SETTINGS,
-      clients: INITIAL_CLIENTS,
-      projects: INITIAL_PROJECTS,
-      payments: INITIAL_PAYMENTS,
-      communications: INITIAL_COMMUNICATIONS,
-      tasks: INITIAL_TASKS,
-      files: INITIAL_FILES,
-      notifications: INITIAL_NOTIFICATIONS,
-      auditLogs: INITIAL_AUDIT_LOGS,
-    };
-    fs.writeFileSync(DB_PATH, JSON.stringify(initialData, null, 2), 'utf-8');
-    return initialData;
-  }
-
   try {
+    const dir = path.dirname(DB_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    if (!fs.existsSync(DB_PATH)) {
+      const initialData: DatabaseStore = {
+        settings: INITIAL_SETTINGS,
+        clients: INITIAL_CLIENTS,
+        projects: INITIAL_PROJECTS,
+        payments: INITIAL_PAYMENTS,
+        communications: INITIAL_COMMUNICATIONS,
+        tasks: INITIAL_TASKS,
+        files: INITIAL_FILES,
+        notifications: INITIAL_NOTIFICATIONS,
+        auditLogs: INITIAL_AUDIT_LOGS,
+      };
+      try {
+        fs.writeFileSync(DB_PATH, JSON.stringify(initialData, null, 2), 'utf-8');
+      } catch (e) {
+        console.warn('[DB Warning] Cannot initialize DB file on disk:', e);
+      }
+      return initialData;
+    }
+
     const content = fs.readFileSync(DB_PATH, 'utf-8');
     return JSON.parse(content);
   } catch (err) {
-    console.error('Failed to parse DB JSON, re-initializing...', err);
-    const initialData: DatabaseStore = {
+    console.warn('[DB Warning] Failed to parse DB file, using in-memory default:', err);
+    return {
       settings: INITIAL_SETTINGS,
       clients: INITIAL_CLIENTS,
       projects: INITIAL_PROJECTS,
@@ -88,13 +95,19 @@ function initDatabase(): DatabaseStore {
       notifications: INITIAL_NOTIFICATIONS,
       auditLogs: INITIAL_AUDIT_LOGS,
     };
-    fs.writeFileSync(DB_PATH, JSON.stringify(initialData, null, 2), 'utf-8');
-    return initialData;
   }
 }
 
 function saveDatabase(db: DatabaseStore) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
+  try {
+    const dir = path.dirname(DB_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('[DB Warning] Cannot save DB to disk:', err);
+  }
 }
 
 // Log Audit Action Helper
@@ -115,7 +128,7 @@ function logAudit(db: DatabaseStore, action: string, details: string, status: 'S
   saveDatabase(db);
 }
 
-async function startServer() {
+export function createExpressApp() {
   const app = express();
   
   // Security Headers & Express Middleware
@@ -127,6 +140,14 @@ async function startServer() {
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    next();
+  });
+
+  // Middleware to normalize URL paths for serverless environments
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    if (!req.url.startsWith('/api') && !req.url.startsWith('/_')) {
+      req.url = '/api' + (req.url.startsWith('/') ? '' : '/') + req.url;
+    }
     next();
   });
 
@@ -800,10 +821,13 @@ async function startServer() {
     res.json(db.auditLogs);
   });
 
-  // -------------------------------------------------------------
-  // VITE / STATIC SERVING
-  // -------------------------------------------------------------
-  if (process.env.NODE_ENV !== 'production') {
+  return app;
+}
+
+export const app = createExpressApp();
+
+async function startServer() {
+  if (process.env.NODE_ENV !== 'production' && !isVercel) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -811,17 +835,23 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req: Request, res: Response) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get('*', (_req: Request, res: Response) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+    }
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[SOLVEX Server] Running on http://0.0.0.0:${PORT}`);
-  });
+  if (!isVercel && process.env.NODE_ENV !== 'test') {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`[SOLVEX Server] Running on http://0.0.0.0:${PORT}`);
+    });
+  }
 }
 
-startServer().catch(err => {
-  console.error('[SOLVEX Server Fatal Error]', err);
-});
+if (!isVercel && process.env.NODE_ENV !== 'test') {
+  startServer().catch(err => {
+    console.error('[SOLVEX Server Fatal Error]', err);
+  });
+}
