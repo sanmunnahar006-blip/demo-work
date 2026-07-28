@@ -143,14 +143,6 @@ export function createExpressApp() {
     next();
   });
 
-  // Middleware to normalize URL paths for serverless environments
-  app.use((req: Request, _res: Response, next: NextFunction) => {
-    if (!req.url.startsWith('/api') && !req.url.startsWith('/_')) {
-      req.url = '/api' + (req.url.startsWith('/') ? '' : '/') + req.url;
-    }
-    next();
-  });
-
   // Database Memory Reference
   let db = initDatabase();
 

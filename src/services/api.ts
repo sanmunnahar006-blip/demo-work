@@ -31,6 +31,23 @@ export function clearSessionToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+async function parseResponseBody(response: Response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    try {
+      return await response.json();
+    } catch {
+      // Fallback to text parsing below
+    }
+  }
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: text || `HTTP error ${response.status}` };
+  }
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const token = getSessionToken();
   const headers: Record<string, string> = {
@@ -53,12 +70,13 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     throw new Error('Unauthorized session. Master password required.');
   }
 
+  const data = await parseResponseBody(response);
+
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `HTTP error ${response.status}`);
+    throw new Error(data.error || `HTTP error ${response.status}`);
   }
 
-  return response.json();
+  return data as T;
 }
 
 export const api = {
@@ -71,7 +89,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password }),
     });
-    const data = await res.json();
+    const data = await parseResponseBody(res);
     if (!res.ok) {
       throw new Error(data.error || 'Authentication failed');
     }
